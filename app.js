@@ -73,19 +73,46 @@ function homeHash(f) {
 }
 
 /* Filtering */
-const haystack = v => v._s || (v._s = `${v.t} ${v.c} ${v.s}`.toLowerCase());
+const haystack = v => v._s || (v._s = `${v.t} ${v.c} ${v.s}`);
+// Whole words only; lookarounds rather than \b so terms like "c++" and ".net" still match.
+const wordRegex = t => new RegExp(`(?<![\\p{L}\\p{N}_])${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}_])`, 'iu');
 function matcher(f, { useArea = true, useCat = true } = {}) {
-  const terms = f.q.toLowerCase().split(/\s+/).filter(Boolean);
+  const terms = f.q.split(/\s+/).filter(Boolean).map(wordRegex);
   const cat = useCat && f.cat ? D.cats.findIndex(c => c.id === f.cat) : -1;
   const area = useArea && activeArea(f);
   return v => (f.news || !v.n)
     && (cat < 0 || v.k.includes(cat))
     && (!area || v.k.some(k => D.areas[D.cats[k].a].id === area))
-    && terms.every(t => haystack(v).includes(t));
+    && terms.every(t => t.test(haystack(v)));
 }
 function activeArea(f) {
   const c = D.cats.find(c => c.id === f.cat);
   return c ? D.areas[c.a].id : f.area;
+}
+
+/* Google Cast. The SDK loads once, on the first video page, so requestSession() still runs inside the click's user gesture. */
+const CAST_HINT = "Casting needs Chrome on desktop/Android — or use the player's cast icon / Open in YouTube";
+let castSdk;
+function loadCast() {
+  return castSdk || (castSdk = new Promise(resolve => {
+    window.__onGCastApiAvailable = ok => {
+      ok = ok && window.cast && cast.framework; // ok can be true even when the framework script failed
+      if (ok) cast.framework.CastContext.getInstance().setOptions({ receiverApplicationId: '233637DE', autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED });
+      resolve(!!ok);
+    };
+    document.head.append(h('script', { src: 'https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1', onerror: () => resolve(false) }));
+  }));
+}
+async function castVideo(vid, status) {
+  if (!await loadCast()) { status.textContent = CAST_HINT; return; }
+  const ctx = cast.framework.CastContext.getInstance();
+  try {
+    if (!ctx.getCurrentSession()) await ctx.requestSession();
+    await ctx.getCurrentSession().sendMessage('urn:x-cast:com.google.youtube.mdx', { type: 'flingVideo', data: { currentTime: 0, videoId: vid } });
+    status.textContent = "Sent to your TV. If it doesn't start, use the player's cast icon.";
+  } catch (e) {
+    status.textContent = e === 'cancel' ? 'Cast cancelled.' : `Cast failed (${e.code || e}). ${CAST_HINT}`;
+  }
 }
 
 /* Components */
@@ -168,20 +195,25 @@ function renderVideo(vid) {
   if (!v) return view.replaceChildren(h('p', { className: 'note' }, 'Video not found. ', h('a', { href: '#/' }, 'Back to all videos')));
   const showNews = filters.news;
   const related = v.r.map(i => D.videos[i]).filter(r => showNews || !r.n || v.n).slice(0, RELATED_SHOWN);
+  const castStatus = h('div', { className: 'meta', ariaLive: 'polite' });
+  loadCast().then(ok => { if (!ok) castStatus.textContent = CAST_HINT; });
   const actions = h('div', { className: 'actions' }, actionButtons(v.v),
-    external(`https://www.youtube.com/watch?v=${v.v}`, 'Open on YouTube ↗'));
+    h('button', { className: 'cast', onclick: () => castVideo(v.v, castStatus) }, 'Cast to TV'),
+    external(`https://www.youtube.com/watch?v=${v.v}`, 'Open in YouTube ↗'));
   actions.dataset.vid = v.v;
   paint(actions);
   const years = v.y[0] === v.y[1] ? v.y[0] : `${v.y[0]}–${v.y[1]}`;
   document.title = `${v.t} — HackerTube`;
   view.replaceChildren(h('div', { className: 'page' },
     h('div', {},
-      h('iframe', { className: 'player', title: v.t, src: `https://www.youtube-nocookie.com/embed/${v.v}`, allowFullscreen: true,
-        allow: 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share',
+      h('iframe', { className: 'player', title: v.t, src: `https://www.youtube.com/embed/${v.v}?rel=0&playsinline=1`, allowFullscreen: true,
+        allow: 'autoplay; encrypted-media; picture-in-picture; fullscreen',
         referrerPolicy: 'strict-origin-when-cross-origin' }),
       h('h1', {}, v.t),
       h('div', { className: 'meta' }, `${v.c} · ${v.ct} · ★ ${v.sc} · ${v.rc} HN recommender${v.rc === 1 ? '' : 's'} · mentioned ${years}`),
       actions,
+      castStatus,
+      h('div', { className: 'meta' }, "To watch on a TV: Cast to TV (Chrome on desktop/Android), the player's own cast icon, or Open in YouTube (opens the app on phones)."),
       h('div', { className: 'chips' }, v.k.map(k => chip(D.cats[k].name, null, homeHash({ q: '', cat: D.cats[k].id, news: filters.news })))),
       h('div', { className: 'box' }, h('p', {}, v.s), h('p', {}, h('b', {}, 'Why HN: '), v.w)),
       h('h2', {}, 'Top HN recommendations'),
