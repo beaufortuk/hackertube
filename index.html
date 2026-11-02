@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src https://i.ytimg.com data:; frame-src https://www.youtube-nocookie.com; base-uri 'none'">
+<title>HackerTube — Chris's edition</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <a id="brand" href="#/">HackerTube — Chris's edition</a>
+  <input id="search" type="search" placeholder="Search titles, channels, summaries" aria-label="Search">
+  <nav>
+    <a id="nav-later" href="#/later">Watch later</a>
+    <a id="nav-watched" href="#/watched">Watched</a>
+    <button id="surprise" title="Random pick from your current filters, weighted by score, skipping watched videos">Surprise me</button>
+  </nav>
+</header>
+<main id="view"><p class="note">Loading…</p></main>
+<footer>
+  Data: <a href="https://hackertube.org" target="_blank" rel="noopener">HackerTube</a> and the
+  <a href="https://huggingface.co/datasets/open-index/hacker-news" target="_blank" rel="noopener">open-index/hacker-news</a> dataset (ODC-By 1.0).
+  Hacker News data is provided by Y Combinator; comments remain the work of their authors. Summaries are LLM-written.
+  Not affiliated with YouTube, Google, Hacker News or Y Combinator.
+</footer>
+<script src="app.js"></script>
+</body>
+</html>
