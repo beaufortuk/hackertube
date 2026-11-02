@@ -7,24 +7,52 @@
 <title>HackerTube — Chris's edition</title>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="style.css">
+<script src="theme.js"></script>
 </head>
 <body>
-<header>
-  <a id="brand" href="#/">HackerTube — Chris's edition</a>
-  <input id="search" type="search" placeholder="Search titles, channels, summaries" aria-label="Search">
-  <nav>
-    <a id="nav-later" href="#/later">Watch later</a>
-    <a id="nav-watched" href="#/watched">Watched</a>
-    <button id="surprise" title="Random pick from your current filters, weighted by score, skipping watched videos">Surprise me</button>
-  </nav>
+<a id="skip" href="#view">Skip to content</a>
+<header id="top">
+  <div class="top-left">
+    <button id="menu" class="iconbtn" type="button" data-icon="menu" aria-controls="side" aria-expanded="false" aria-label="Open menu"></button>
+    <a id="brand" href="#/">HackerTube — Chris's edition</a>
+  </div>
+  <form id="search-form" role="search">
+    <input id="search" type="search" placeholder="Search titles, channels, summaries" aria-label="Search titles, channels and summaries" aria-keyshortcuts="/" autocomplete="off" enterkeyhint="search">
+    <button id="search-go" type="submit" data-icon="search" aria-label="Search" title="Search"></button>
+  </form>
+  <div class="top-right">
+    <button id="surprise" type="button" data-icon="shuffle" aria-label="Surprise me" title="Random pick from your current filters, weighted by score, skipping watched videos"><span>Surprise me</span></button>
+    <button id="theme" class="iconbtn" type="button"></button>
+  </div>
 </header>
-<main id="view"><p class="note">Loading…</p></main>
-<footer>
-  Data: <a href="https://hackertube.org" target="_blank" rel="noopener">HackerTube</a> and the
-  <a href="https://huggingface.co/datasets/open-index/hacker-news" target="_blank" rel="noopener">open-index/hacker-news</a> dataset (ODC-By 1.0).
-  Hacker News data is provided by Y Combinator; comments remain the work of their authors. Summaries are LLM-written.
-  Not affiliated with YouTube, Google, Hacker News or Y Combinator.
-</footer>
+<div id="scrim" hidden></div>
+<nav id="side" aria-label="Main">
+  <div class="drawer-head">
+    <button id="menu-close" class="iconbtn" type="button" data-icon="close" aria-label="Close menu"></button>
+    <span>HackerTube — Chris's edition</span>
+  </div>
+  <ul>
+    <li><a href="#/" data-nav="home" data-icon="home"><span class="label">Home</span></a></li>
+    <li><a href="#/long" data-nav="long" data-icon="long"><span class="label">Long watches</span></a></li>
+    <li><a href="#/gems" data-nav="gems" data-icon="gem"><span class="label">Hidden gems</span></a></li>
+    <li><a href="#/recent" data-nav="recent" data-icon="recent"><span class="label">Recent</span></a></li>
+    <li class="sep"><a href="#/later" data-nav="later" data-icon="later"><span class="label">Watch later</span><span id="nav-later" class="count"></span></a></li>
+    <li><a href="#/watched" data-nav="watched" data-icon="watched"><span class="label">Watched</span><span id="nav-watched" class="count"></span></a></li>
+    <li class="sep"><a href="#/categories" data-nav="categories" data-icon="categories"><span class="label">Categories</span></a></li>
+    <li><a href="#/about" data-nav="about" data-icon="about"><span class="label">About</span></a></li>
+  </ul>
+</nav>
+<div id="content">
+  <main id="view" tabindex="-1"><p class="note">Loading…</p></main>
+  <footer>
+    Data: <a href="https://hackertube.org" target="_blank" rel="noopener">HackerTube</a> and the
+    <a href="https://huggingface.co/datasets/open-index/hacker-news" target="_blank" rel="noopener">open-index/hacker-news</a> dataset (ODC-By 1.0).
+    Hacker News data is provided by Y Combinator; comments remain the work of their authors. Summaries are LLM-written.
+    Not affiliated with YouTube, Google, Hacker News or Y Combinator.
+  </footer>
+</div>
+<div id="toast" role="status" hidden></div>
+<div id="announce" class="sr-only" aria-live="polite"></div>
 <script src="app.js"></script>
 </body>
 </html>

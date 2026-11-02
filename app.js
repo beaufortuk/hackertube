@@ -1,27 +1,75 @@
 'use strict';
-const PAGE = 60, RELATED_SHOWN = 8;
+const PAGE = 60, RELATED_SHOWN = 12;
+const SITE_TITLE = "HackerTube — Chris's edition";
 const $ = id => document.getElementById(id);
-const view = $('view'), search = $('search');
-let D, byVid, filters = { q: '', area: '', cat: '', news: false }, observer;
+const root = document.documentElement;
+const view = $('view'), search = $('search'), side = $('side');
+const DEFAULT_FILTERS = { page: 'home', q: '', area: '', cat: '', sort: 'score', len: '', news: false };
+let D, byVid, filters = DEFAULT_FILTERS, filtersOpen = false, observer;
+
+const ICONS = {
+  menu: 'M4 7h16M4 12h16M4 17h16',
+  search: 'M11 4a7 7 0 1 0 0 14a7 7 0 0 0 0-14zM16.2 16.2L21 21',
+  home: 'M3 11.5L12 4l9 7.5M6 9.500V20h4v-6h4v6h4V9.500',
+  long: 'M3 5h18v14H3zM10 9l5 3-5 3z',
+  gem: 'M7 4h10l4 6-9 10.500L3 10zM3 10h18M9.500 4L8 10l4 10.500L16 10l-1.500-6',
+  recent: 'M4 6h16v14H4zM4 10.500h16M8.500 3v4.500M15.500 3v4.500',
+  later: 'M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18zM12 7.500V12l3.500 2',
+  watched: 'M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18zM8 12.500l3 3 5-6.500',
+  categories: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
+  about: 'M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18zM12 11v5.500M12 7.500v.500',
+  sun: 'M12 8a4 4 0 1 0 0 8a4 4 0 0 0 0-8zM12 2.500v2M12 19.500v2M2.500 12h2M19.500 12h2M5.300 5.300l1.400 1.400M17.300 17.300l1.400 1.400M5.300 18.700l1.400-1.400M17.300 6.700l1.400-1.400',
+  moon: 'M20 14.500A8.500 8.500 0 0 1 9.500 4a8.500 8.500 0 1 0 10.500 10.500z',
+  shuffle: 'M3 7h3c5.500 0 6.500 10 12 10h3M3 17h3c2 0 3.300-1.300 4.400-3M13.600 10C14.700 8.300 16 7 18 7h3M18.500 4.500L21 7l-2.500 2.500M18.500 14.500L21 17l-2.500 2.500',
+  filters: 'M4 7h9M17 7h3M4 17h3M11 17h9M15 5v4M9 15v4',
+  cast: 'M3 18a3 3 0 0 1 3 3M3 14a7 7 0 0 1 7 7M3 10a11 11 0 0 1 11 11M3 7V4.500h18v15h-4.500',
+  external: 'M14 4h6v6M20 4l-9 9M18 14v6H4V6h6',
+  close: 'M6 6l12 12M18 6L6 18',
+};
+function icon(name) {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.classList.add('icon');
+  const path = document.createElementNS(NS, 'path');
+  path.setAttribute('d', ICONS[name]);
+  svg.append(path);
+  return svg;
+}
 
 // Builds a DOM node; all data goes through text nodes and properties, never innerHTML.
 function h(tag, attrs, ...kids) {
   const el = document.createElement(tag);
   for (const [k, val] of Object.entries(attrs || {})) {
     if (k.startsWith('on')) el.addEventListener(k.slice(2), val);
-    else if (val != null) el[k] = val;
+    else if (val == null) continue;
+    else if (k.includes('-')) el.setAttribute(k, val);
+    else el[k] = val;
   }
   el.append(...kids.flat().filter(k => k != null));
   return el;
 }
 const external = (href, ...kids) => h('a', { href, target: '_blank', rel: 'noopener' }, ...kids);
 const num = n => n.toLocaleString('en-US');
+const plural = (n, word) => `${num(n)} ${word}${n === 1 ? '' : 's'}`;
+const monthIndex = m => { const [y, mo] = m.split('-').map(Number); return y * 12 + mo - 1; };
+function ago(month) {
+  const now = new Date();
+  const n = Math.max(0, now.getFullYear() * 12 + now.getMonth() - monthIndex(month));
+  if (n < 1) return 'this month';
+  return n < 12 ? `${plural(n, 'month')} ago` : `${plural(Math.floor(n / 12), 'year')} ago`;
+}
 
 /* Saved lists. A 'storage' listener keeps tabs in sync so one tab can't overwrite another's marks. */
 function loadList(key) {
   try { const a = JSON.parse(localStorage.getItem(key)); return Array.isArray(a) ? a : []; } catch { return []; }
 }
 const lists = { later: 'hackertube.later', watched: 'hackertube.watched' };
+const LIST_UI = {
+  later: { label: 'Watch later', icon: 'later', off: '+ Watch later', on: '✓ Watch later' },
+  watched: { label: 'Watched', icon: 'watched', off: 'Mark watched', on: '✓ Watched' },
+};
 const saved = {};
 function syncLists() { for (const n in lists) saved[n] = new Set(loadList(lists[n])); updateNav(); }
 function toggle(name, vid) {
@@ -30,64 +78,105 @@ function toggle(name, vid) {
   try { localStorage.setItem(lists[name], JSON.stringify([...set])); } catch { /* storage full or blocked */ }
   updateNav();
   document.querySelectorAll(`[data-vid="${vid}"]`).forEach(paint);
-  if (route().page === name) render();
+  if (route().page === name) {
+    render();
+    if (document.activeElement === document.body) settleFocus(); // the button went with its card
+  }
 }
 function updateNav() {
-  $('nav-later').textContent = `Watch later (${saved.later.size})`;
-  $('nav-watched').textContent = `Watched (${saved.watched.size})`;
+  $('nav-later').textContent = saved.later.size || '';
+  $('nav-watched').textContent = saved.watched.size || '';
 }
 function paint(el) {
   const vid = el.dataset.vid;
   el.classList.toggle('seen', el.classList.contains('card') && saved.watched.has(vid));
   el.querySelectorAll('[data-list]').forEach(b => {
-    const on = saved[b.dataset.list].has(vid);
+    const name = b.dataset.list, on = saved[name].has(vid), label = b.querySelector('.lbl');
     b.classList.toggle('on', on);
-    b.textContent = b.dataset.list === 'later' ? (on ? '✓ Watch later' : '+ Watch later') : (on ? '✓ Watched' : 'Mark watched');
+    b.setAttribute('aria-pressed', on);
+    if (label) label.textContent = on ? LIST_UI[name].on : LIST_UI[name].off;
+    else b.title = on ? LIST_UI[name].on : LIST_UI[name].off;
   });
 }
-function actionButtons(vid) {
+function actionButtons(v, compact) {
   return ['later', 'watched'].map(name => {
-    const b = h('button', { onclick: () => toggle(name, vid) });
+    const b = h('button', { type: 'button', className: compact ? 'iconbtn small' : 'pill', 'aria-label': `${LIST_UI[name].label}: ${v.t}`, onclick: () => toggle(name, v.v) },
+      icon(LIST_UI[name].icon), compact ? null : h('span', { className: 'lbl' }));
     b.dataset.list = name;
     return b;
   });
 }
 
-/* Routing: #/ with filters in the query, #/v/<vid>, #/later, #/watched. */
+const defaultSort = page => page === 'recent' ? 'recent' : 'score';
+
+/* Routing: every view has its own hash. Filters live in the query, so they survive back/forward and can be linked to. */
 function route() {
   const [path, query] = location.hash.slice(1).split('?');
   const parts = (path || '/').split('/').filter(Boolean);
-  if (parts[0] === 'v') return { page: 'video', vid: parts[1] };
-  if (parts[0] === 'later' || parts[0] === 'watched') return { page: parts[0] };
+  const [page = 'home', id] = parts;
   const q = new URLSearchParams(query);
-  return { page: 'home', filters: { q: q.get('q') || '', area: q.get('area') || '', cat: q.get('cat') || '', news: q.get('news') === '1' } };
+  const opts = { ...DEFAULT_FILTERS, news: q.get('news') === '1',
+    sort: ['score', 'recent'].includes(q.get('sort')) ? q.get('sort') : defaultSort(page),
+    len: ['long', 'short'].includes(q.get('len')) && page !== 'long' ? q.get('len') : '' };
+  if (page === 'home' && !parts.length && (q.has('q') || q.has('cat') || q.has('area'))) { // links from before these routes existed
+    if (q.has('q')) return { redirect: listHash({ ...opts, page: 'search', q: q.get('q'), cat: q.get('cat') || '', area: q.get('area') || '' }) };
+    if (q.has('cat')) return { redirect: listHash({ ...opts, page: 'c', id: q.get('cat') }) };
+    return { redirect: listHash({ ...opts, page: 'a', id: q.get('area') }) };
+  }
+  if (parts.length === 2 && page === 'v') return { page: 'video', vid: id };
+  if (parts.length === 2 && page === 'c') return { ...opts, page, id, cat: id };
+  if (parts.length === 2 && page === 'a') return { ...opts, page, id, area: id };
+  if (parts.length < 2) {
+    if (page === 'search') return { ...opts, page, q: q.get('q') || '', cat: q.get('cat') || '', area: q.get('area') || '' };
+    if (page in PRESETS) return { ...opts, page };
+    if (['later', 'watched', 'categories', 'about'].includes(page)) return { page };
+  }
+  return { page: '404' };
 }
-function homeHash(f) {
+function listHash(f) {
   const q = new URLSearchParams();
-  if (f.q) q.set('q', f.q);
-  if (f.cat) q.set('cat', f.cat);
-  else if (f.area) q.set('area', f.area);
+  if (f.page === 'search') {
+    if (f.q) q.set('q', f.q);
+    if (f.cat) q.set('cat', f.cat);
+    else if (f.area) q.set('area', f.area);
+  }
+  if (f.sort && f.sort !== defaultSort(f.page)) q.set('sort', f.sort);
+  if (f.len) q.set('len', f.len);
   if (f.news) q.set('news', '1');
+  const path = f.page === 'home' ? '/' : (f.page === 'c' || f.page === 'a') ? `/${f.page}/${f.id}` : `/${f.page}`;
   const s = q.toString();
-  return '#/' + (s ? '?' + s : '');
+  return `#${path}${s ? '?' + s : ''}`;
 }
 
 /* Filtering */
+// The dataset has no running times (see DATA.md), so length goes by format.
+const LONG_FORMATS = new Set(['talk', 'lecture', 'course', 'documentary', 'interview', 'podcast']);
+const isLong = v => LONG_FORMATS.has(v.ct);
+const RECENT_MONTHS = 12;
+const PRESETS = {
+  home: { heading: 'Most recommended on Hacker News', title: '' },
+  long: { heading: 'Long watches', sub: 'Talks, lectures, courses, documentaries, interviews and podcasts. Chosen by format, because the data has no running times.', test: isLong },
+  gems: { heading: 'Hidden gems', sub: 'Few recommenders, but at least two of them enthusiastic.', test: v => v.rc >= 2 && v.rc <= 5 && v.ss >= 2 },
+  recent: { heading: 'Recent', sub: `Recommended on Hacker News in the last ${RECENT_MONTHS} months of the data.`, test: v => v.rc > 0 && D.latest - monthIndex(v.lm) < RECENT_MONTHS },
+};
 const haystack = v => v._s || (v._s = `${v.t} ${v.c} ${v.s}`);
 // Whole words only; lookarounds rather than \b so terms like "c++" and ".net" still match.
 const wordRegex = t => new RegExp(`(?<![\\p{L}\\p{N}_])${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}_])`, 'iu');
-function matcher(f, { useArea = true, useCat = true } = {}) {
+function matcher(f) {
   const terms = f.q.split(/\s+/).filter(Boolean).map(wordRegex);
-  const cat = useCat && f.cat ? D.cats.findIndex(c => c.id === f.cat) : -1;
-  const area = useArea && activeArea(f);
+  const cat = f.cat ? D.cats.findIndex(c => c.id === f.cat) : -1;
+  const area = f.area ? D.areas.findIndex(a => a.id === f.area) : -1;
+  const preset = (PRESETS[f.page] || {}).test;
   return v => (f.news || !v.n)
+    && (!preset || preset(v))
+    && (!f.len || isLong(v) === (f.len === 'long'))
     && (cat < 0 || v.k.includes(cat))
-    && (!area || v.k.some(k => D.areas[D.cats[k].a].id === area))
+    && (area < 0 || v.k.some(k => D.cats[k].a === area))
     && terms.every(t => t.test(haystack(v)));
 }
-function activeArea(f) {
+function activeAreaIndex(f) {
   const c = D.cats.find(c => c.id === f.cat);
-  return c ? D.areas[c.a].id : f.area;
+  return c ? c.a : D.areas.findIndex(a => a.id === f.area);
 }
 
 /* Google Cast. The SDK loads once, on the first video page, so requestSession() still runs inside the click's user gesture. */
@@ -116,24 +205,29 @@ async function castVideo(vid, status) {
 }
 
 /* Components */
+function recLine(v) {
+  return v.rc ? `${v.rc} HN rec${v.rc > 1 ? 's' : ''} · last rec ${ago(v.lm)}` : `cited, not recommended · ${ago(v.lm)}`;
+}
 function card(v) {
   const el = h('div', { className: 'card' },
     thumb(v),
-    h('a', { href: `#/v/${v.v}` }, h('h3', {}, v.t)),
-    h('div', { className: 'meta' }, v.c),
-    h('div', { className: 'meta' }, `${v.ct} · ${v.rc ? `${v.rc} HN recommender${v.rc > 1 ? 's' : ''}` : 'cited, not recommended'}`),
-    h('div', { className: 'actions' }, actionButtons(v.v)));
+    h('div', { className: 'card-body' },
+      h('div', { className: 'card-text' },
+        h('a', { href: `#/v/${v.v}` }, h('h2', {}, v.t)),
+        h('div', { className: 'meta' }, v.c),
+        h('div', { className: 'meta' }, `${v.ct} · ${recLine(v)}`)),
+      h('div', { className: 'card-actions' }, actionButtons(v, true))));
   el.dataset.vid = v.v;
   paint(el);
   return el;
 }
-function thumb(v) {
-  return h('a', { className: 'thumb', href: `#/v/${v.v}` },
+function thumb(v) { // Out of the tab order and hidden from screen readers: the title link next to it goes to the same place.
+  return h('a', { className: 'thumb', href: `#/v/${v.v}`, tabIndex: -1, 'aria-hidden': 'true' },
     h('img', { src: `https://i.ytimg.com/vi/${v.v}/hqdefault.jpg`, alt: '', loading: 'lazy', onerror: e => e.target.remove() }),
     h('span', { className: 'badge', title: 'HackerTube score' }, `★ ${v.sc}`));
 }
 function chip(label, count, href, on) {
-  return h('a', { className: 'chip' + (on ? ' on' : ''), href }, label, count == null ? null : h('small', {}, num(count)));
+  return h('a', { className: 'chip' + (on ? ' on' : ''), href, 'aria-current': on ? 'true' : null }, label, count == null ? null : h('small', {}, num(count)));
 }
 function grid(items, shownFrom) {
   const g = h('div', { className: 'grid' });
@@ -156,69 +250,175 @@ function grid(items, shownFrom) {
   if (shown < items.length) observer.observe(sentinel);
   return [g, sentinel];
 }
+function setTitle(title) { document.title = title ? `${title} — ${SITE_TITLE}` : SITE_TITLE; }
+function heading(text, sub) {
+  return h('div', { className: 'head' }, h('h1', { tabIndex: -1 }, text), sub ? h('p', { className: 'sub' }, sub) : null);
+}
+function emptyView(title, message) {
+  setTitle(title);
+  view.replaceChildren(h('div', { className: 'empty' }, h('h1', { tabIndex: -1 }, title), h('p', { className: 'note' }, message),
+    h('div', { className: 'links' }, h('a', { className: 'pill', href: '#/' }, 'Go home'), h('a', { className: 'pill', href: '#/categories' }, 'Browse categories'))));
+}
 
 /* Views */
-function renderHome(f, memo) {
-  const base = D.videos.filter(matcher(f, { useArea: false, useCat: false }));
-  const area = activeArea(f);
-  const areaIdx = D.areas.findIndex(a => a.id === area);
+function listSpec(r) {
+  if (r.page === 'search') return r.q ? { heading: `Results for “${r.q}”`, title: `“${r.q}”` } : { heading: 'Search', title: 'Search' };
+  if (r.page === 'c') {
+    const c = D.cats.find(c => c.id === r.id);
+    return c && { heading: c.name, title: c.name, crumbs: [D.areas[c.a]] };
+  }
+  if (r.page === 'a') {
+    const a = D.areas.find(a => a.id === r.id);
+    return a && { heading: a.name, title: a.name, crumbs: [] };
+  }
+  return PRESETS[r.page];
+}
+function breadcrumbs(areas) {
+  return h('nav', { className: 'crumbs', 'aria-label': 'Breadcrumb' }, h('a', { href: '#/categories' }, 'Categories'),
+    areas.flatMap(a => [' › ', h('a', { href: `#/a/${a.id}` }, a.name)]));
+}
+function facets(r) {
+  const base = D.videos.filter(matcher({ ...r, area: '', cat: '' }));
+  const areaIdx = activeAreaIndex(r);
   const areaCounts = new Map(), catCounts = new Map();
   for (const v of base) {
     new Set(v.k.map(k => D.cats[k].a)).forEach(a => areaCounts.set(a, (areaCounts.get(a) || 0) + 1));
     v.k.forEach(k => catCounts.set(k, (catCounts.get(k) || 0) + 1));
   }
-  const items = D.videos.filter(matcher(f));
-  const newsTotal = D.videos.filter(matcher({ ...f, news: true })).filter(v => v.n).length;
-  const areaChips = [chip('All', base.length, homeHash({ ...f, area: '', cat: '' }), !area),
-    ...D.areas.map((a, i) => (areaCounts.get(i) || i === areaIdx)
-      ? chip(a.name, areaCounts.get(i) || 0, homeHash({ ...f, area: a.id, cat: '' }), i === areaIdx) : null)];
-  const catChips = areaIdx < 0 ? [] : D.cats.map((c, i) => (c.a === areaIdx && (catCounts.get(i) || c.id === f.cat))
-    ? chip(c.name, catCounts.get(i) || 0, homeHash(c.id === f.cat ? { ...f, area, cat: '' } : { ...f, cat: c.id }), c.id === f.cat) : null);
-  const news = h('label', {}, h('input', { type: 'checkbox', checked: f.news,
-    onchange: e => { location.hash = homeHash({ ...f, news: e.target.checked }); } }), ` Show news (${num(newsTotal)})`);
+  const inSearch = r.page === 'search';
+  const areaHref = a => inSearch ? listHash({ ...r, area: a ? a.id : '', cat: '' }) : a ? listHash({ ...r, page: 'a', id: a.id }) : listHash({ ...r, page: 'home' });
+  const catHref = c => inSearch ? listHash({ ...r, cat: c.id }) : listHash({ ...r, page: 'c', id: c.id });
+  const rows = [];
+  if (r.page === 'home' || inSearch) {
+    rows.push(chip('All', base.length, areaHref(null), areaIdx < 0),
+      ...D.areas.map((a, i) => (areaCounts.get(i) || i === areaIdx) ? chip(a.name, areaCounts.get(i) || 0, areaHref(a), i === areaIdx) : null));
+  }
+  if (areaIdx >= 0) {
+    if (!inSearch) rows.push(chip(`All in ${D.areas[areaIdx].name}`, areaCounts.get(areaIdx) || 0, areaHref(D.areas[areaIdx]), !r.cat));
+    D.cats.forEach((c, i) => {
+      if (c.a === areaIdx && (catCounts.get(i) || c.id === r.cat)) rows.push(chip(c.name, catCounts.get(i) || 0, c.id === r.cat && inSearch ? areaHref(D.areas[areaIdx]) : catHref(c), c.id === r.cat));
+    });
+  }
+  return rows.filter(Boolean);
+}
+function filterPanel(r, newsTotal) {
+  const go = (change, focusId) => { refocus = focusId; location.hash = listHash({ ...r, ...change }); };
+  const select = (id, label, value, options, onchange) => h('label', {}, label,
+    h('select', { id, onchange }, options.map(([val, text]) => h('option', { value: val, selected: val === value }, text))));
+  const dirty = r.sort !== defaultSort(r.page) || r.len || r.news;
+  return h('div', { id: 'filters-panel', className: 'panel', hidden: !filtersOpen, role: 'group', 'aria-label': 'Filters' },
+    select('f-sort', 'Sort by', r.sort, [['score', 'Best (HN score)'], ['recent', 'Recently recommended']], e => go({ sort: e.target.value }, 'f-sort')),
+    r.page === 'long' ? null : select('f-len', 'Length', r.len, [['', 'Any length'], ['long', 'Long formats'], ['short', 'Shorter formats']], e => go({ len: e.target.value }, 'f-len')),
+    h('label', { className: 'check' }, h('input', { id: 'f-news', type: 'checkbox', checked: r.news, onchange: e => go({ news: e.target.checked }, 'f-news') }), `Show news (${num(newsTotal)})`),
+    dirty ? h('a', { className: 'reset', href: listHash({ ...r, sort: '', len: '', news: false }) }, 'Reset') : null,
+    r.page === 'long' ? null : h('p', { className: 'sub' }, 'Running times aren’t in the data, so length goes by format: long means talks, lectures, courses, documentaries, interviews and podcasts.'));
+}
+function setFiltersOpen(open) {
+  const panel = $('filters-panel');
+  filtersOpen = open;
+  if (!panel) return;
+  panel.hidden = !open;
+  $('filters-btn').setAttribute('aria-expanded', open);
+}
+function renderBrowse(r, memo) {
+  const spec = listSpec(r);
+  if (!spec) return emptyView('Page not found', 'That category doesn’t exist.');
+  filters = r;
+  setTitle(spec.title ?? spec.heading);
+  let items = D.videos.filter(matcher(r));
+  if (r.sort === 'recent') items = [...items].sort((a, b) => monthIndex(b.lm) - monthIndex(a.lm)); // stable: ties stay best-first
+  const newsTotal = D.videos.filter(matcher({ ...r, news: true })).filter(v => v.n).length;
+  const active = (r.sort !== defaultSort(r.page) ? 1 : 0) + (r.len ? 1 : 0) + (r.news ? 1 : 0);
+  const chips = facets(r);
+  const count = `${plural(items.length, 'video')}, ${r.sort === 'recent' ? 'most recently recommended first' : 'best first'}`;
+  $('announce').textContent = plural(items.length, 'video');
   view.replaceChildren(
-    h('div', { className: 'chips' }, areaChips),
-    catChips.length ? h('div', { className: 'chips' }, catChips) : '',
-    h('div', { className: 'bar' }, h('span', {}, `${num(items.length)} videos, best first`), news),
-    ...(items.length ? grid(items, memo && memo.shown) : [h('p', { className: 'note' }, 'Nothing matches those filters.')]));
+    spec.crumbs ? breadcrumbs(spec.crumbs) : '',
+    heading(spec.heading, spec.sub),
+    h('div', { className: 'toolbar' },
+      h('button', { id: 'filters-btn', type: 'button', className: 'pill', 'aria-expanded': filtersOpen, 'aria-controls': 'filters-panel', onclick: () => setFiltersOpen(!filtersOpen) },
+        icon('filters'), 'Filters', active ? h('span', { className: 'tally', 'aria-label': `${active} active` }, active) : null),
+      chips.length ? h('nav', { className: 'chips', 'aria-label': 'Narrow by topic' }, chips) : null),
+    filterPanel(r, newsTotal),
+    h('p', { className: 'meta' }, count),
+    ...(items.length ? grid(items, memo && memo.shown) : [h('p', { className: 'note' }, 'Nothing matches those filters. ',
+      newsTotal && !r.news ? h('a', { href: listHash({ ...r, news: true }) }, `Show ${plural(newsTotal, 'news video')}`) : null)]));
 }
 function renderList(name) {
   const set = saved[name];
+  const label = LIST_UI[name].label;
   const items = [...set].reverse().map(vid => byVid.get(vid)).filter(Boolean);
+  setTitle(label);
   view.replaceChildren(
-    h('div', { className: 'bar' }, h('span', {}, `${name === 'later' ? 'Watch later' : 'Watched'}: ${num(items.length)} videos`)),
+    heading(label, plural(items.length, 'video')),
     ...(items.length ? grid(items, items.length) : [h('p', { className: 'note' },
-      name === 'later' ? 'Nothing saved yet. Use “+ Watch later” on any video.' : 'Nothing marked as watched yet.')]));
+      name === 'later' ? 'Nothing saved yet. Use the Watch later button on any video.' : 'Nothing marked as watched yet.')]));
+}
+function renderCategories() {
+  const byCount = (list, count) => list.map((item, i) => ({ item, i })).sort((x, y) => count[y.i] - count[x.i]);
+  setTitle('Categories');
+  view.replaceChildren(
+    heading('Categories', `${D.areas.length} areas and ${D.cats.length} categories. Counts leave out news videos, as the lists do by default.`),
+    h('div', { className: 'areas' }, byCount(D.areas, D.areaCount).map(({ item: a, i }) => h('section', { className: 'area', 'aria-labelledby': `area-${a.id}` },
+      h('h2', { id: `area-${a.id}` }, h('a', { href: `#/a/${a.id}` }, a.name, h('span', { className: 'num' }, num(D.areaCount[i])))),
+      h('ul', {}, byCount(D.cats, D.catCount).filter(({ item: c }) => c.a === i).map(({ item: c, i: k }) =>
+        h('li', {}, h('a', { href: `#/c/${c.id}` }, c.name, h('span', { className: 'num' }, num(D.catCount[k]))))))))));
+}
+function renderAbout() {
+  setTitle('About');
+  view.replaceChildren(h('div', { className: 'prose' },
+    heading('About'),
+    h('p', {}, `A browsable collection of ${num(D.videos.length)} YouTube videos from Hacker News comments, ranked by how often and how warmly they were recommended.`),
+    h('h2', {}, 'The lists'),
+    h('dl', {},
+      h('dt', {}, 'Score (★)'), h('dd', {}, 'Distinct months with a recommendation, with strong recommendations counting extra.'),
+      h('dt', {}, 'Long watches'), h('dd', {}, 'Picked by format, because the data has no running times.'),
+      h('dt', {}, 'Hidden gems'), h('dd', {}, PRESETS.gems.sub),
+      h('dt', {}, 'Recent'), h('dd', {}, PRESETS.recent.sub),
+      h('dt', {}, 'Search'), h('dd', {}, 'Looks in titles, channels and summaries, and every term has to match as a whole word.')),
+    h('h2', {}, 'Your lists'),
+    h('p', {}, 'Watch later and Watched are stored in this browser only.'),
+    h('h2', {}, 'Keyboard'),
+    h('p', {}, h('kbd', {}, '/'), ' jumps to search. ', h('kbd', {}, 'Esc'), ' closes the menu or the filters.'),
+    h('h2', {}, 'Credits'),
+    h('p', {}, 'Data from ', external('https://hackertube.org', 'HackerTube'), ' and the ',
+      external('https://huggingface.co/datasets/open-index/hacker-news', 'open-index/hacker-news'), ' dataset (ODC-By 1.0). Summaries, categories and labels are LLM-written, so expect a few percent of noise.')));
 }
 function renderVideo(vid) {
   const v = byVid.get(vid);
-  if (!v) return view.replaceChildren(h('p', { className: 'note' }, 'Video not found. ', h('a', { href: '#/' }, 'Back to all videos')));
-  const showNews = filters.news;
-  const related = v.r.map(i => D.videos[i]).filter(r => showNews || !r.n || v.n).slice(0, RELATED_SHOWN);
-  const castStatus = h('div', { className: 'meta', ariaLive: 'polite' });
+  if (!v) return emptyView('Video not found', 'That video isn’t in this collection.');
+  const related = v.r.map(i => D.videos[i]).filter(r => filters.news || !r.n || v.n).slice(0, RELATED_SHOWN);
+  const castStatus = h('div', { className: 'meta status', 'aria-live': 'polite' });
   loadCast().then(ok => { if (!ok) castStatus.textContent = CAST_HINT; });
-  const actions = h('div', { className: 'actions' }, actionButtons(v.v),
-    h('button', { className: 'cast', onclick: () => castVideo(v.v, castStatus) }, 'Cast to TV'),
-    external(`https://www.youtube.com/watch?v=${v.v}`, 'Open in YouTube ↗'));
+  const actions = h('div', { className: 'actions' }, actionButtons(v),
+    h('button', { type: 'button', className: 'pill primary', onclick: () => castVideo(v.v, castStatus) }, icon('cast'), 'Cast to TV'),
+    h('a', { className: 'pill', href: `https://www.youtube.com/watch?v=${v.v}`, target: '_blank', rel: 'noopener' }, icon('external'), 'Open in YouTube'));
   actions.dataset.vid = v.v;
   paint(actions);
   const years = v.y[0] === v.y[1] ? v.y[0] : `${v.y[0]}–${v.y[1]}`;
-  document.title = `${v.t} — HackerTube`;
+  const stats = v.rc
+    ? `★ ${v.sc} · ${v.rc} HN recommender${v.rc === 1 ? '' : 's'} · recommended in ${plural(v.rm, 'month')}, ${years}`
+    : `★ ${v.sc} · cited on HN ${years}, not recommended`;
+  setTitle(v.t);
   view.replaceChildren(h('div', { className: 'page' },
     h('div', {},
       h('iframe', { className: 'player', title: v.t, src: `https://www.youtube.com/embed/${v.v}?rel=0&playsinline=1`, allowFullscreen: true,
         allow: 'autoplay; encrypted-media; picture-in-picture; fullscreen',
         referrerPolicy: 'strict-origin-when-cross-origin' }),
-      h('h1', {}, v.t),
-      h('div', { className: 'meta' }, `${v.c} · ${v.ct} · ★ ${v.sc} · ${v.rc} HN recommender${v.rc === 1 ? '' : 's'} · mentioned ${years}`),
+      h('h1', { tabIndex: -1 }, v.t),
+      h('a', { className: 'channel', href: listHash({ ...DEFAULT_FILTERS, page: 'search', q: v.c }), title: 'Search for this channel' }, v.c),
+      h('div', { className: 'meta' }, stats),
       actions,
       castStatus,
-      h('div', { className: 'meta' }, "To watch on a TV: Cast to TV (Chrome on desktop/Android), the player's own cast icon, or Open in YouTube (opens the app on phones)."),
-      h('div', { className: 'chips' }, v.k.map(k => chip(D.cats[k].name, null, homeHash({ q: '', cat: D.cats[k].id, news: filters.news })))),
-      h('div', { className: 'box' }, h('p', {}, v.s), h('p', {}, h('b', {}, 'Why HN: '), v.w)),
+      h('div', { className: 'meta cast-note' }, "To watch on a TV: Cast to TV (Chrome on desktop/Android), the player's own cast icon, or Open in YouTube (opens the app on phones)."),
+      h('div', { className: 'box' },
+        h('p', { className: 'meta' }, `${v.ct} · ${v.rc ? 'last recommended' : 'last cited'} ${ago(v.lm)}`),
+        h('p', {}, v.s),
+        h('p', {}, h('b', {}, 'Why HN: '), v.w),
+        h('div', { className: 'chips wrap' }, v.k.map(k => chip(D.cats[k].name, null, listHash({ ...DEFAULT_FILTERS, page: 'c', id: D.cats[k].id, news: filters.news }))))),
       h('h2', {}, 'Top HN recommendations'),
       v.m.length ? v.m.map(comment) : h('p', { className: 'note' }, 'Nobody on HN outright recommended this one; it was only cited in passing.')),
-    h('aside', {},
+    h('aside', { 'aria-label': 'Related videos' },
       h('h2', {}, 'Related'),
       related.map(mini))));
 }
@@ -233,77 +433,227 @@ function comment(m) {
 }
 function mini(v) {
   const el = h('div', { className: 'mini card' }, thumb(v),
-    h('div', {}, h('a', { href: `#/v/${v.v}` }, h('h3', {}, v.t)), h('div', { className: 'meta' }, v.c)));
+    h('div', {}, h('a', { href: `#/v/${v.v}` }, h('h3', {}, v.t)), h('div', { className: 'meta' }, v.c), h('div', { className: 'meta' }, recLine(v))));
   el.dataset.vid = v.v;
   paint(el);
   return el;
 }
 
 /* Surprise me: weighted by score. Zero-score (never recommended) videos can't come up. */
+let toastTimer;
+function toast(message) {
+  const t = $('toast');
+  t.textContent = message;
+  t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, 4000);
+}
 function surprise() {
+  if (!D) return;
   const current = route().vid;
   const m = matcher(filters);
   const pool = D.videos.filter(v => v.sc > 0 && m(v) && !saved.watched.has(v.v) && v.v !== current);
-  if (!pool.length) return alert('Nothing left to pick from under the current filters.');
+  if (!pool.length) return toast('Nothing left to pick from under the current filters.');
   let r = Math.random() * pool.reduce((sum, v) => sum + v.sc, 0);
   const pick = pool.find(v => (r -= v.sc) < 0) || pool[pool.length - 1];
-  fresh = true;
   location.hash = `#/v/${pick.v}`;
 }
 
-/* Render loop; scroll position and grid depth are restored only for back/forward navigation. */
-const memos = new Map();
-let gridState = {}, fresh = false;
-function render() {
+/* Shell: sidebar on wide screens, icon rail on medium ones, drawer on demand below that. */
+const wideScreen = matchMedia('(min-width: 1200px)');
+const SIDEBAR_KEY = 'hackertube.sidebar';
+let collapsed = false, drawerOpen = false, drawerOpener;
+try { collapsed = localStorage.getItem(SIDEBAR_KEY) === 'rail'; } catch { /* storage blocked */ }
+function syncShell() {
+  const wide = wideScreen.matches;
+  root.classList.toggle('side-collapsed', wide && collapsed);
+  root.classList.toggle('rail', !drawerOpen && (!wide || collapsed));
+  root.classList.toggle('drawer-open', drawerOpen);
+  const expanded = wide ? !collapsed : drawerOpen;
+  $('menu').setAttribute('aria-expanded', expanded);
+  $('menu').setAttribute('aria-label', wide && expanded ? 'Collapse menu' : wide ? 'Expand menu' : 'Open menu');
+  $('scrim').hidden = !drawerOpen;
+  for (const el of [$('skip'), $('top'), $('content')]) el.inert = drawerOpen;
+}
+function openDrawer() {
+  drawerOpener = document.activeElement;
+  root.style.setProperty('--scrollbar', `${innerWidth - root.clientWidth}px`); // the locked page must not shift when its scrollbar goes
+  drawerOpen = true;
+  syncShell();
+  $('menu-close').focus();
+}
+function closeDrawer(restoreFocus) {
+  if (!drawerOpen) return;
+  drawerOpen = false;
+  syncShell();
+  if (restoreFocus && drawerOpener) drawerOpener.focus();
+}
+function trapTab(e) {
+  const stops = [...side.querySelectorAll('a, button')];
+  const first = stops[0], last = stops[stops.length - 1];
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  else if (!side.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+}
+function syncThemeButton() {
+  const dark = root.dataset.theme === 'dark';
+  const b = $('theme');
+  b.replaceChildren(icon(dark ? 'sun' : 'moon'));
+  b.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
+  b.title = dark ? 'Light theme' : 'Dark theme';
+}
+
+/* Render loop. Each history entry gets its own id, so back/forward restores that visit's scroll and grid depth, while a fresh visit to the same hash starts at the top. */
+const MEMO_KEY = 'hackertube.memos';
+const memos = new Map(); // entry id -> { y, shown, open }
+let gridState = {}, entry, entrySeq = 0, refocus = null, typedNav = false;
+function ensureEntry() {
+  entry = history.state && history.state.id;
+  if (entry) return memos.get(entry);
+  entry = `${Date.now().toString(36)}-${entrySeq++}`;
+  history.replaceState({ id: entry }, '');
+  return null;
+}
+const snapshot = () => ({ y: scrollY, shown: gridState.shown, open: filtersOpen });
+function syncNav(r) {
+  const current = (r.page === 'c' || r.page === 'a') ? 'categories' : r.page;
+  side.querySelectorAll('a[data-nav]').forEach(a => {
+    if (a.dataset.nav === current) a.setAttribute('aria-current', 'page');
+    else a.removeAttribute('aria-current');
+  });
+}
+function render(memo) {
   const r = route();
-  document.title = "HackerTube — Chris's edition";
-  $('nav-later').classList.toggle('on', r.page === 'later');
-  $('nav-watched').classList.toggle('on', r.page === 'watched');
+  if (r.redirect) return location.replace(r.redirect);
+  syncNav(r);
   if (observer) observer.disconnect();
   gridState = {};
-  if (r.page === 'home') {
-    filters = r.filters;
-    if (document.activeElement !== search) search.value = filters.q;
-    renderHome(filters, memos.get(location.hash));
-  } else if (r.page === 'video') {
-    renderVideo(r.vid);
-  } else {
-    renderList(r.page);
-  }
+  if (r.page !== 'video' && !typedNav) search.value = r.q || '';
+  if (r.page === 'video') renderVideo(r.vid);
+  else if (r.page === 'later' || r.page === 'watched') renderList(r.page);
+  else if (r.page === 'categories') renderCategories();
+  else if (r.page === 'about') renderAbout();
+  else if (r.page === '404') emptyView('Page not found', 'There’s nothing at this address.');
+  else renderBrowse(r, memo);
+}
+function settleFocus() { // Moves focus with the view so keyboard and screen-reader users land on the new page's heading.
+  const target = (refocus && $(refocus)) || view.querySelector('h1') || view;
+  refocus = null;
+  target.focus({ preventScroll: true });
 }
 addEventListener('hashchange', e => {
-  const old = new URL(e.oldURL).hash || '#/';
-  memos.set(old, { y: scrollY, shown: gridState.shown });
-  const memo = fresh ? null : memos.get(location.hash || '#/');
-  if (fresh) memos.delete(location.hash || '#/');
-  render();
+  clearTimeout(typing);
+  if (!D) return;
+  memos.set(entry, snapshot());
+  const memo = ensureEntry();
+  const samePage = new URL(e.oldURL).hash.split('?')[0] === location.hash.split('?')[0];
+  filtersOpen = memo ? !!memo.open : samePage && filtersOpen;
+  closeDrawer(false);
+  render(memo);
   scrollTo(0, memo ? memo.y : 0);
-  fresh = false;
+  if (typedNav) typedNav = false;
+  else settleFocus();
 });
-document.addEventListener('click', e => { if (e.target.closest('a[href^="#"]')) fresh = true; }, true);
 history.scrollRestoration = 'manual';
+addEventListener('pagehide', () => { // so a reload can restore the same way
+  if (!entry) return;
+  memos.set(entry, snapshot());
+  try { sessionStorage.setItem(MEMO_KEY, JSON.stringify([...memos].slice(-100))); } catch { /* storage full or blocked */ }
+});
 
 let typing;
+function searchRoute(q) {
+  const r = route();
+  return listHash({ ...(r.page === 'search' ? r : DEFAULT_FILTERS), page: 'search', q });
+}
 search.addEventListener('input', () => {
   clearTimeout(typing);
   typing = setTimeout(() => {
-    const r = route();
-    const next = homeHash({ ...(r.page === 'home' ? r.filters : filters), q: search.value.trim() });
-    fresh = true;
-    if (r.page === 'home') { history.replaceState(null, '', next); render(); scrollTo(0, 0); fresh = false; }
-    else location.hash = next;
+    if (!D) return;
+    const q = search.value.trim(), r = route();
+    if (r.page === 'search') { // refine in place, so back leaves the search rather than stepping through each keystroke
+      history.replaceState(history.state, '', searchRoute(q));
+      typedNav = true;
+      render();
+      typedNav = false;
+      scrollTo(0, 0);
+    } else if (q) {
+      typedNav = true;
+      location.hash = searchRoute(q);
+    }
   }, 120);
+});
+$('search-form').addEventListener('submit', e => {
+  e.preventDefault();
+  clearTimeout(typing);
+  const q = search.value.trim();
+  const target = q ? searchRoute(q) : '#/';
+  if (location.hash === target) settleFocus();
+  else location.hash = target;
 });
 $('surprise').addEventListener('click', surprise);
 addEventListener('storage', () => D && syncLists());
+
+$('menu').addEventListener('click', () => {
+  if (wideScreen.matches) {
+    collapsed = !collapsed;
+    try { localStorage.setItem(SIDEBAR_KEY, collapsed ? 'rail' : 'full'); } catch { /* storage full or blocked */ }
+    syncShell();
+  } else openDrawer();
+});
+$('menu-close').addEventListener('click', () => closeDrawer(true));
+$('scrim').addEventListener('click', () => closeDrawer(true));
+side.addEventListener('click', e => {
+  const a = e.target.closest('a');
+  if (a) closeDrawer(a.getAttribute('href') === (location.hash || '#/'));
+});
+wideScreen.addEventListener('change', () => { closeDrawer(false); syncShell(); });
+$('skip').addEventListener('click', e => { // a real jump to #view would be read as a route
+  e.preventDefault();
+  view.focus();
+});
+$('theme').addEventListener('click', () => {
+  try { localStorage.setItem(THEME_KEY, root.dataset.theme === 'dark' ? 'light' : 'dark'); } catch { /* storage full or blocked */ }
+  root.dataset.theme = root.dataset.theme === 'dark' ? 'light' : 'dark';
+  syncThemeButton();
+});
+systemDark.addEventListener('change', () => { applyTheme(); syncThemeButton(); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    if (drawerOpen) closeDrawer(true);
+    else if (filtersOpen && $('filters-panel')) { setFiltersOpen(false); $('filters-btn').focus(); }
+  } else if (e.key === 'Tab' && drawerOpen) {
+    trapTab(e);
+  } else if (e.key === '/' && !drawerOpen && !e.ctrlKey && !e.metaKey && !e.altKey && !e.target.closest('input, textarea, select, [contenteditable]')) {
+    e.preventDefault();
+    search.focus();
+    search.select();
+  }
+});
+
+document.querySelectorAll('[data-icon]').forEach(el => el.prepend(icon(el.dataset.icon)));
+syncThemeButton();
+syncShell();
 
 fetch('data/videos.json')
   .then(res => { if (!res.ok) throw new Error(res.status); return res.json(); })
   .then(data => {
     D = data;
     byVid = new Map(D.videos.map(v => [v.v, v]));
+    D.latest = Math.max(...D.videos.map(v => monthIndex(v.lm)));
+    D.areaCount = D.areas.map(() => 0);
+    D.catCount = D.cats.map(() => 0);
+    for (const v of D.videos) {
+      if (v.n) continue;
+      v.k.forEach(k => D.catCount[k]++);
+      new Set(v.k.map(k => D.cats[k].a)).forEach(a => D.areaCount[a]++);
+    }
     syncLists();
-    render();
+    try { for (const [id, memo] of JSON.parse(sessionStorage.getItem(MEMO_KEY)) || []) memos.set(id, memo); } catch { /* none saved */ }
+    const memo = ensureEntry();
+    filtersOpen = !!(memo && memo.open);
+    render(memo);
+    scrollTo(0, memo ? memo.y : 0);
   })
   .catch(err => {
     view.replaceChildren(h('p', { className: 'note' },
