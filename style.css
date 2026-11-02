@@ -109,7 +109,6 @@ footer { padding: 16px 24px; color: var(--dim); font-size: 12px; border-top: 1px
 .panel input { width: 18px; height: 18px; margin: 0; }
 .panel select { height: 36px; padding: 0 8px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; font-weight: 400; }
 .panel .reset { min-height: 36px; padding: 8px 0; text-decoration: underline; }
-.panel .sub { flex-basis: 100%; margin: 0; font-size: 12px; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 28px 16px; }
 .thumb { position: relative; display: block; aspect-ratio: 16/9; overflow: hidden; border-radius: 12px; background: var(--soft); }
 .thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
@@ -138,9 +137,6 @@ footer { padding: 16px 24px; color: var(--dim); font-size: 12px; border-top: 1px
 .prose { max-width: 720px; }
 .prose h2 { margin: 24px 0 8px; font-size: 16px; }
 .prose p { margin: 0 0 10px; }
-.prose dt { font-weight: 600; }
-.prose dd { margin: 0 0 8px; color: var(--dim); }
-kbd { padding: 1px 6px; font: 12px ui-monospace, monospace; background: var(--soft); border: 1px solid var(--line); border-radius: 4px; }
 .empty { padding: 48px 0; text-align: center; }
 .empty .links { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 16px; }
 
@@ -153,7 +149,6 @@ kbd { padding: 1px 6px; font: 12px ui-monospace, monospace; background: var(--so
 .channel { font-size: 15px; font-weight: 600; }
 .channel:hover { text-decoration: underline; }
 .page .actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 8px; }
-.cast-note { margin-bottom: 4px; }
 .status:empty { display: none; }
 .status { margin-bottom: 4px; font-weight: 500; }
 .box { margin-top: 12px; padding: 12px 14px; background: var(--soft); border-radius: 12px; }
@@ -178,5 +173,34 @@ aside h2:first-child { margin-top: 0; }
   .player { width: calc(100% + 24px); margin: -8px -12px 0; border-radius: 0; }
   .mini { grid-template-columns: 140px minmax(0, 1fr); }
 }
+
+/* Playlists, collections, settings */
+.badge.score { top: 6px; bottom: auto; }
+.badge.inline { position: static; display: inline-block; margin-right: 6px; }
+.yt-line { margin-bottom: 2px; }
+.tile .thumb { display: flex; align-items: center; justify-content: center; color: var(--dim); }
+.tile .thumb .icon { width: 40px; height: 40px; }
+.section { margin: 24px 0 12px; font-size: 18px; }
+.inline-form { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.inline-form input { flex: 1 1 160px; min-width: 0; max-width: 360px; height: 36px; padding: 0 12px; font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; }
+.order { display: flex; gap: 2px; margin-top: 4px; }
+.iconbtn:disabled { opacity: .35; cursor: default; background: none; }
+.pill:disabled, .pill.primary:disabled { opacity: .5; cursor: default; background: var(--soft); color: inherit; filter: none; }
+.check { display: flex; align-items: center; gap: 8px; min-height: 36px; cursor: pointer; }
+.check input { width: 18px; height: 18px; margin: 0; flex: none; }
+.radios { display: flex; flex-wrap: wrap; gap: 4px 20px; }
+.setting-rows { max-width: 480px; }
+.setting-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.setting-row .count { margin-left: 6px; }
+.settings .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.file-pill { cursor: pointer; }
+.file-pill:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
+.save-wrap { position: relative; }
+.save-panel { position: absolute; top: calc(100% + 6px); left: 0; z-index: 15; width: min(300px, calc(100vw - 16px)); padding: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 4px 24px rgba(0, 0, 0, .25); }
+.save-title { margin-bottom: 6px; font-weight: 600; }
+.save-list { max-height: 220px; overflow-y: auto; margin-bottom: 8px; }
+.save-list .check span { min-width: 0; overflow-wrap: anywhere; }
+.save-panel .inline-form { margin: 0; flex-wrap: nowrap; }
+.save-panel .inline-form input { flex: 1 1 auto; width: 100%; }
 
 #toast { position: fixed; left: 50%; bottom: 24px; z-index: 35; max-width: calc(100vw - 32px); padding: 10px 16px; background: var(--fg); color: var(--bg); border-radius: 8px; transform: translateX(-50%); }
