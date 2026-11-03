@@ -64,7 +64,8 @@ function h(tag, attrs, ...kids) {
   el.append(...kids.flat().filter(k => k != null));
   return el;
 }
-const external = (href, ...kids) => h('a', { href, target: '_blank', rel: 'noopener' }, ...kids);
+const safeUrl = u => { try { const x = new URL(u); return x.protocol === 'https:' ? x.href : null; } catch { return null; } };
+const external = (href, ...kids) => safeUrl(href) ? h('a', { href: safeUrl(href), target: '_blank', rel: 'noopener noreferrer' }, ...kids) : h('span', {}, ...kids);
 const num = n => n.toLocaleString('en-US');
 const plural = (n, word) => `${num(n)} ${word}${n === 1 ? '' : 's'}`;
 const shortNum = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 });
@@ -616,6 +617,7 @@ function exportLists(status) {
 async function importLists(file) {
   const report = message => { const s = $('data-status'); if (s) s.textContent = message; };
   let data;
+  if (file.size > 5e6) return report('Import failed');
   try { data = JSON.parse(await file.text()); } catch { return report(`Nothing imported: ${file.name} isn’t a JSON file.`); }
   if (!data || data.app !== 'hackertube' || typeof data.lists !== 'object' || !data.lists) return report(`Nothing imported: ${file.name} isn’t a HackerTube export.`);
   let added = 0, ok = true;
@@ -660,7 +662,7 @@ function renderVideo(vid) {
   });
   const actions = h('div', { className: 'actions' }, actionButtons(v, false, ['liked', 'disliked']), actionButtons(v), saveMenu(v),
     castButton,
-    h('a', { className: 'pill', href: `https://www.youtube.com/watch?v=${v.v}`, target: '_blank', rel: 'noopener' }, icon('external'), 'Open in YouTube'));
+    h('a', { className: 'pill', href: `https://www.youtube.com/watch?v=${v.v}`, target: '_blank', rel: 'noopener noreferrer' }, icon('external'), 'Open in YouTube'));
   actions.dataset.vid = v.v;
   paint(actions);
   const ytLine = viewLine(v, true);
